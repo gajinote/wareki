@@ -1,0 +1,17 @@
+{
+  "name": "lunisolarcal",
+  "version": "1.0.0",
+  "description": "天保暦（太陰太陽暦）カレンダー — Node.js",
+  "main": "src/api/server.js",
+  "scripts": {
+    "start": "node src/api/server.js",
+    "dev": "node --watch src/api/server.js",
+    "test": "node test/verify.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
