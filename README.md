@@ -1,16 +1,19 @@
 # 天保暦 — 太陰太陽暦カレンダー
 
-Node.js 実装の天保暦（1844年制定の定気法太陰太陽暦）計算エンジン + Web UI
+Node.js 実装の天保暦（1844年制定・定気法太陰太陽暦）計算エンジン + Web UI
+
+**GitHub Pages デモ**: https://gajinote.github.io/wareki/
 
 ## 機能
 
-- **天保暦変換**: グレゴリオ暦日 → 旧暦 (月名・日名・干支・閏月)
+- **天保暦変換**: グレゴリオ暦日 → 旧暦（月名・日名・干支・閏月）
 - **月齢計算**: Meeus 精密式による朔の時刻から算出
 - **二十四節気**: 定気法による太陽黄経ベースの節気・中気判定
 - **比較ウィンドウ**: 西暦と旧暦の並列表示（ドラッグ移動可）
-- **月カレンダー**: 旧暦日・月齢・節気をオーバーレイ表示
+- **グレゴリオ暦モード**: 月カレンダーに旧暦日・月齢・節気をオーバーレイ表示（7列週グリッド）
+- **旧暦表示モード**: 朔日〜晦日を1ユニットとした10列旬グリッド（上旬/中旬/下旬）
 
-## セットアップ
+## セットアップ（ローカル開発）
 
 ```bash
 npm install
@@ -19,11 +22,39 @@ npm run dev      # --watch モード (Node 18+)
 node test/verify.js  # 精度検証
 ```
 
+## アーキテクチャ
+
+```
+wareki/
+├── docs/                    # GitHub Pages 配信ルート（静的版）
+│   └── index.html           # 全ロジック・UIをインライン化した単一ファイル
+├── .github/workflows/
+│   └── deploy.yml           # main push で GitHub Pages へ自動デプロイ
+├── src/
+│   ├── astronomy/
+│   │   ├── solar.js         # 太陽黄経 (Meeus Ch.25) + 二分法収束
+│   │   ├── lunar.js         # 朔時刻 (Meeus Ch.47) + 月齢
+│   │   └── datetime.js      # JD ⟷ グレゴリオ暦変換
+│   ├── calendar/
+│   │   └── tenpo.js         # 定気法・閏月判定・月名・干支
+│   └── api/
+│       └── server.js        # Express REST API（ローカル開発用）
+└── public/
+    └── index.html           # ローカル開発用フロントエンド
+```
+
+### 2系統の配信方式
+
+| 方式 | エントリ | 説明 |
+|------|---------|------|
+| ローカル開発 | `src/api/server.js` | Express + `/api/*` エンドポイント |
+| GitHub Pages | `docs/index.html` | 全ロジックをインライン化、サーバー不要 |
+
 ## 天文計算の精度
 
 | 項目 | 精度 | 手法 |
 |------|------|------|
-| 太陽黄経 | ±0.01° | Meeus Ch.25 (太陽中心差展開) |
+| 太陽黄経 | ±0.01° | Meeus Ch.25（太陽中心差展開） |
 | 節気時刻 | ±数分 | 二分法で黄経収束 |
 | 朔の時刻 | ±数分 | Meeus Ch.47 精密補正項 |
 | 月齢 | ±0.1日 | 朔からの経過時間 |
@@ -32,34 +63,17 @@ node test/verify.js  # 精度検証
 
 天保暦の定気法では**経度（地方時）が主要因**、緯度は月の視差補正に微影響（数分レベル）。
 
-現実的な影響:
 - **経度**: 東経135°(JST基準)との差 → 朔・節気の日跨ぎに影響
 - **緯度**: 月の地平視差 ~57' のうち緯度成分は最大 ~8' → 朔の時刻に ±数分
 
-本実装は JST (東経135°) 基準。他の経度を使う場合は `jstMidnightJD` の tzOffset を調整。
+本実装は JST（東経135°）基準。他の経度を使う場合は `jstMidnightJD` の `tzOffset` を調整。
 
-## アーキテクチャ
-
-```
-src/
-├── astronomy/
-│   ├── solar.js     # 太陽黄経 (Meeus Ch.25) + 二分法収束
-│   ├── lunar.js     # 朔時刻 (Meeus Ch.47) + 月齢
-│   └── datetime.js  # JD ⟷ グレゴリオ暦変換
-├── calendar/
-│   └── tenpo.js     # 定気法・閏月判定・月名
-└── api/
-    └── server.js    # Express REST API
-public/
-└── index.html       # Single-file フロントエンド
-```
-
-## API エンドポイント
+## API エンドポイント（ローカル開発時）
 
 ```
-GET /api/date?year=2024&month=9&day=17
-GET /api/month?year=2024&month=9
-GET /api/newmoons?year=2024
+GET /api/date?year=2026&month=4&day=12
+GET /api/month?year=2026&month=4
+GET /api/newmoons?year=2026
 ```
 
 ## 既知の制限
