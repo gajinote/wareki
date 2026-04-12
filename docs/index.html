@@ -444,6 +444,25 @@
     justify-content: space-between;
   }
 
+  /* ── 旧暦モード ── */
+  .cal-grid.lunisolar {
+    grid-template-columns: repeat(10, 1fr);
+  }
+  .cal-weekday.jun { color: var(--gold); }
+  .greg-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--ink);
+    opacity: 0.45;
+  }
+  .tenpo-day-primary {
+    font-family: 'Shippori Mincho', serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    line-height: 1.2;
+  }
+
   /* Loading */
   .loading {
     opacity: 0.4;
@@ -536,6 +555,7 @@
         </div>
         <button class="nav-btn" onclick="nextMonth()">▸</button>
       </div>
+      <button class="btn" id="modeToggleBtn" onclick="toggleViewMode()">旧暦表示</button>
       <button class="btn" onclick="goToday()">今日</button>
     </div>
 
@@ -1098,6 +1118,166 @@ let curMonth = today.getMonth() + 1;
 let selDate = { year: curYear, month: curMonth, day: today.getDate() };
 let compareVisible = false;
 
+// 旧暦モード用状態
+let viewMode = 'gregorian'; // 'gregorian' | 'lunisolar'
+let curTenpoYear = null;
+let curTenpoMonth = null;
+let curTenpoIsLeap = false;
+
+// ============================================================
+// 旧暦モード — データ取得
+// ============================================================
+function apiLunarMonth(gregYear, tenpoMonth, isLeap) {
+  // 対象の旧暦月オブジェクトを buildTenpoMonths で検索
+  let targetM = null;
+  for (const yr of [gregYear, gregYear - 1, gregYear + 1]) {
+    const list = buildTenpoMonths(yr, 18);
+    targetM = list.find(m => m.tenpoMonth === tenpoMonth && m.isLeap === isLeap);
+    if (targetM) break;
+  }
+  if (!targetM) return null;
+
+  const days = [];
+  for (let i = 0; i < targetM.length; i++) {
+    const g = jdToLocalGregorian(targetM.newMoonJD + i, 9);
+    const jdNoon = targetM.newMoonJD + i + 9 / 24 + 0.5;
+    const age = moonAge(jdNoon);
+    const sunLon = solarLongitude(jdNoon);
+    days.push({
+      tenpoDay: i + 1,
+      dayName: tenpoDayName(i + 1),
+      greg: { year: g.year, month: g.month, day: g.day },
+      moonAge: Math.round(age * 10) / 10,
+      moonEmoji: getMoonEmoji(age),
+      sekki: getSekki(sunLon),
+    });
+  }
+
+  return {
+    tenpoMonth,
+    tenpoMonthName: tenpoMonthName(tenpoMonth),
+    isLeap,
+    length: targetM.length,
+    startGreg: targetM.startGreg,
+    endGreg: targetM.endGreg,
+    days,
+  };
+}
+
+// ============================================================
+// 旧暦モード — カレンダー描画（10列旬グリッド）
+// ============================================================
+function loadLunarCalendar() {
+  const data = apiLunarMonth(curTenpoYear, curTenpoMonth, curTenpoIsLeap);
+  if (!data) return;
+
+  const leapLabel = data.isLeap ? '閏' : '';
+  document.getElementById('calTitle').textContent =
+    `${leapLabel}${data.tenpoMonthName}（旧暦 ${data.tenpoMonth}月）`;
+  const s = data.startGreg, e = data.endGreg;
+  document.getElementById('calSub').textContent =
+    `グレゴリオ暦 ${s.year}/${String(s.month).padStart(2,'0')}/${String(s.day).padStart(2,'0')} 〜 ${e.year}/${String(e.month).padStart(2,'0')}/${String(e.day).padStart(2,'0')}`;
+
+  const grid = document.getElementById('calGrid');
+  grid.classList.add('lunisolar');
+
+  // ヘッダー再構築（一〜十）
+  while (grid.firstChild) grid.removeChild(grid.firstChild);
+  const junHeaders = ['一','二','三','四','五','六','七','八','九','十'];
+  junHeaders.forEach(h => {
+    const d = document.createElement('div');
+    d.className = 'cal-weekday jun';
+    d.textContent = h;
+    grid.appendChild(d);
+  });
+
+  const todayStr = `${today.getFullYear()}-${today.getMonth()+1}-${today.getDate()}`;
+
+  // 旧暦の各日をセルとして追加
+  data.days.forEach(d => {
+    const cell = document.createElement('div');
+    const g = d.greg;
+    const isToday = `${g.year}-${g.month}-${g.day}` === todayStr;
+    const isSel = selDate.year === g.year && selDate.month === g.month && selDate.day === g.day;
+
+    cell.className = `cal-cell${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`;
+    cell.onclick = () => selectLunarDay(d);
+
+    let inner = `<div class="tenpo-day-primary">${d.dayName}</div>`;
+    inner += `<div class="greg-sub">${g.month}/${g.day}</div>`;
+    if (d.sekki) {
+      inner += `<div class="cell-sekki">${d.sekki}</div>`;
+    }
+    inner += `<div class="cell-moon">${d.moonEmoji}<span class="cell-moon-age">${d.moonAge}</span></div>`;
+
+    cell.innerHTML = inner;
+    grid.appendChild(cell);
+  });
+
+  // 29日月の場合は末尾に空セルを追加（10の倍数に揃える）
+  if (data.length === 29) {
+    const empty = document.createElement('div');
+    empty.className = 'cal-cell empty';
+    grid.appendChild(empty);
+  }
+}
+
+function selectLunarDay(d) {
+  selDate = { year: d.greg.year, month: d.greg.month, day: d.greg.day };
+  document.getElementById('selYear').value = selDate.year;
+  document.getElementById('selMonth').value = selDate.month;
+  document.getElementById('selDay').value = selDate.day;
+
+  const data = apiDate(selDate.year, selDate.month, selDate.day);
+  if (data) renderTodayPanel(data);
+  loadLunarCalendar();
+}
+
+function prevLunarMonth() {
+  const list = buildTenpoMonths(curTenpoYear, 18);
+  const idx = list.findIndex(m => m.tenpoMonth === curTenpoMonth && m.isLeap === curTenpoIsLeap);
+  if (idx <= 0) return;
+  const prev = list[idx - 1];
+  const g = prev.startGreg;
+  curTenpoYear = g.year;
+  curTenpoMonth = prev.tenpoMonth;
+  curTenpoIsLeap = prev.isLeap;
+  loadCalendar();
+}
+
+function nextLunarMonth() {
+  const list = buildTenpoMonths(curTenpoYear, 18);
+  const idx = list.findIndex(m => m.tenpoMonth === curTenpoMonth && m.isLeap === curTenpoIsLeap);
+  if (idx < 0 || idx >= list.length - 1) return;
+  const next = list[idx + 1];
+  const g = next.startGreg;
+  curTenpoYear = g.year;
+  curTenpoMonth = next.tenpoMonth;
+  curTenpoIsLeap = next.isLeap;
+  loadCalendar();
+}
+
+function toggleViewMode() {
+  const btn = document.getElementById('modeToggleBtn');
+  const grid = document.getElementById('calGrid');
+  if (viewMode === 'gregorian') {
+    // 旧暦モードに切替
+    const data = apiDate(selDate.year, selDate.month, selDate.day);
+    if (!data) return;
+    curTenpoYear = data.tenpo.year;
+    curTenpoMonth = data.tenpo.month;
+    curTenpoIsLeap = data.tenpo.isLeap;
+    viewMode = 'lunisolar';
+    btn.textContent = 'グレゴリオ表示';
+  } else {
+    // グレゴリオモードに切替
+    viewMode = 'gregorian';
+    grid.classList.remove('lunisolar');
+    btn.textContent = '旧暦表示';
+  }
+  loadCalendar();
+}
+
 document.getElementById('selYear').value = selDate.year;
 document.getElementById('selMonth').value = selDate.month;
 document.getElementById('selDay').value = selDate.day;
@@ -1182,6 +1362,23 @@ function renderCompare(data) {
 }
 
 function loadCalendar() {
+  if (viewMode === 'lunisolar') { loadLunarCalendar(); return; }
+  loadGregorianCalendar();
+}
+
+function loadGregorianCalendar() {
+  const grid = document.getElementById('calGrid');
+  grid.classList.remove('lunisolar');
+
+  // ヘッダー（7列: 日〜土）を再構築
+  while (grid.firstChild) grid.removeChild(grid.firstChild);
+  ['日','月','火','水','木','金','土'].forEach((label, i) => {
+    const d = document.createElement('div');
+    d.className = `cal-weekday${i===0?' sun':i===6?' sat':''}`;
+    d.textContent = label;
+    grid.appendChild(d);
+  });
+
   const data = apiMonth(curYear, curMonth);
 
   document.getElementById('calTitle').textContent = `${curYear}年 ${curMonth}月`;
@@ -1193,10 +1390,8 @@ function loadCalendar() {
   document.getElementById('calSub').textContent = `旧暦 ${tenpoMonths.join(' / ')}`;
 
   const firstDay = new Date(curYear, curMonth - 1, 1).getDay();
-  const grid = document.getElementById('calGrid');
 
-  while (grid.children.length > 7) grid.removeChild(grid.lastChild);
-
+  // 空パディングセル
   for (let i = 0; i < firstDay; i++) {
     const cell = document.createElement('div');
     cell.className = 'cal-cell empty';
@@ -1243,11 +1438,13 @@ function selectDay(day) {
 }
 
 function prevMonth() {
+  if (viewMode === 'lunisolar') { prevLunarMonth(); return; }
   curMonth--;
   if (curMonth < 1) { curMonth = 12; curYear--; }
   loadCalendar();
 }
 function nextMonth() {
+  if (viewMode === 'lunisolar') { nextLunarMonth(); return; }
   curMonth++;
   if (curMonth > 12) { curMonth = 1; curYear++; }
   loadCalendar();
@@ -1259,7 +1456,19 @@ function goToday() {
   document.getElementById('selYear').value = selDate.year;
   document.getElementById('selMonth').value = selDate.month;
   document.getElementById('selDay').value = selDate.day;
-  loadDate();
+  if (viewMode === 'lunisolar') {
+    const data = apiDate(selDate.year, selDate.month, selDate.day);
+    if (data) {
+      curTenpoYear = data.tenpo.year;
+      curTenpoMonth = data.tenpo.month;
+      curTenpoIsLeap = data.tenpo.isLeap;
+    }
+    loadCalendar();
+    const dateData = apiDate(selDate.year, selDate.month, selDate.day);
+    if (dateData) renderTodayPanel(dateData);
+  } else {
+    loadDate();
+  }
 }
 
 function toggleCompare() {
