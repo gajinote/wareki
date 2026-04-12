@@ -3,7 +3,7 @@ const express = require('express');
 const path = require('path');
 const { gregorianToTenpo, getTenpoMonthsForYear, buildTenpoMonths, tenpoMonthName, tenpoDayName, getKanshi } = require('../calendar/tenpo');
 const { moonAge } = require('../astronomy/lunar');
-const { jstMidnightJD } = require('../astronomy/datetime');
+const { jstMidnightJD, jdToLocalGregorian } = require('../astronomy/datetime');
 const { solarLongitude } = require('../astronomy/solar');
 
 const app = express();
@@ -87,6 +87,55 @@ app.get('/api/month', (req, res) => {
     }
 
     res.json({ year, month, days });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /api/lunarmonth?year=&month=&isLeap=
+ * 旧暦月の全日データ（朔日〜晦日）
+ */
+app.get('/api/lunarmonth', (req, res) => {
+  const gregYear = parseInt(req.query.year) || new Date().getFullYear();
+  const tenpoMonth = parseInt(req.query.month);
+  const isLeap = req.query.isLeap === 'true';
+  if (!tenpoMonth) return res.status(400).json({ error: 'month は必須です' });
+
+  try {
+    let targetM = null;
+    for (const yr of [gregYear, gregYear - 1, gregYear + 1]) {
+      const list = buildTenpoMonths(yr, 18);
+      targetM = list.find(m => m.tenpoMonth === tenpoMonth && m.isLeap === isLeap);
+      if (targetM) break;
+    }
+    if (!targetM) return res.status(404).json({ error: '旧暦月が見つかりません' });
+
+    const days = [];
+    for (let i = 0; i < targetM.length; i++) {
+      const g = jdToLocalGregorian(targetM.newMoonJD + i, 9);
+      const jdNoon = targetM.newMoonJD + i + 9 / 24 + 0.5;
+      const age = moonAge(jdNoon);
+      const sunLon = solarLongitude(jdNoon);
+      days.push({
+        tenpoDay: i + 1,
+        dayName: tenpoDayName(i + 1),
+        greg: { year: g.year, month: g.month, day: g.day },
+        moonAge: Math.round(age * 10) / 10,
+        moonEmoji: getMoonEmoji(age),
+        sekki: getSekki(sunLon),
+      });
+    }
+
+    res.json({
+      tenpoMonth,
+      tenpoMonthName: tenpoMonthName(tenpoMonth),
+      isLeap,
+      length: targetM.length,
+      startGreg: targetM.startGreg,
+      endGreg: targetM.endGreg,
+      days,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
