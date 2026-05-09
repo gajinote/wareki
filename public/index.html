@@ -123,9 +123,9 @@
 
   .date-select {
     display: flex;
-    gap: 0.4rem;
+    gap: 0.3rem;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
   .date-select input, .date-select select {
     font-family: 'JetBrains Mono', monospace;
@@ -133,11 +133,11 @@
     border: 1px solid var(--border);
     background: var(--paper);
     color: var(--ink);
-    padding: 0.3rem 0.5rem;
+    padding: 0.3rem 0.3rem;
     border-radius: 2px;
     width: 70px;
   }
-  .date-select input[type="number"]:first-child { width: 90px; }
+  .date-select input[type="number"]:first-child { width: 70px; }
 
   /* Moon display */
   .moon-display {
@@ -507,9 +507,9 @@
       <div class="date-select">
         <input type="number" id="selYear" value="" min="1844" max="2100" placeholder="西暦">
         <span style="opacity:0.4">年</span>
-        <input type="number" id="selMonth" value="" min="1" max="12" style="width:55px">
+        <input type="number" id="selMonth" value="" min="1" max="12" style="width:44px">
         <span style="opacity:0.4">月</span>
-        <input type="number" id="selDay" value="" min="1" max="31" style="width:55px">
+        <input type="number" id="selDay" value="" min="1" max="31" style="width:44px">
         <span style="opacity:0.4">日</span>
         <button class="btn primary" onclick="loadDate()">→</button>
       </div>
