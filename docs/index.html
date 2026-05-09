@@ -1018,6 +1018,14 @@ function getSekki(lon) {
   return null;
 }
 
+function getSurroundingSekki(lon) {
+  const map = {};
+  for (const s of SEKKI_LIST) map[s.long] = s.name;
+  const prevLon = Math.floor(lon / 15) * 15;
+  const nextLon = (prevLon + 15) % 360;
+  return { prev: map[prevLon] || null, next: map[nextLon] || null };
+}
+
 const CHUKI_NAMES = {
   330: '雨水', 0: '春分', 30: '穀雨', 60: '小満',
   90: '夏至', 120: '大暑', 150: '処暑', 180: '秋分',
@@ -1056,6 +1064,7 @@ function apiDate(year, month, day) {
       moonEmoji: getMoonEmoji(age),
       solarLongitude: Math.round(sunLon * 100) / 100,
       sekki: getSekki(sunLon),
+      ...getSurroundingSekki(sunLon),
     },
   };
 }
@@ -1313,7 +1322,7 @@ function renderTodayPanel(data) {
   document.getElementById('sunLon').textContent = astronomy.solarLongitude + '°';
   document.getElementById('sekkiLabel').innerHTML = astronomy.sekki
     ? `<span class="sekki-badge">${astronomy.sekki}</span>`
-    : '—';
+    : `<span style="opacity:0.65">${astronomy.prev} → ${astronomy.next}</span>`;
   document.getElementById('monthLen').textContent = tenpo.monthLength + '日';
 
   const jd = gregorianToJD(selDate.year, selDate.month, selDate.day);

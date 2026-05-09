@@ -45,6 +45,7 @@ app.get('/api/date', (req, res) => {
         moonEmoji: getMoonEmoji(age),
         solarLongitude: Math.round(sunLon * 100) / 100,
         sekki: getSekki(sunLon),
+        ...getSurroundingSekki(sunLon),
       },
     });
   } catch (e) {
@@ -229,6 +230,14 @@ function getSekki(lon) {
     }
   }
   return null;
+}
+
+function getSurroundingSekki(lon) {
+  const map = {};
+  for (const s of SEKKI_LIST) map[s.long] = s.name;
+  const prevLon = Math.floor(lon / 15) * 15;
+  const nextLon = (prevLon + 15) % 360;
+  return { prev: map[prevLon] || null, next: map[nextLon] || null };
 }
 
 function getChukiName(lon) {
