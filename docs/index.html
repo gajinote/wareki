@@ -33,7 +33,6 @@
       url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='60' height='60' filter='url(%23noise)' opacity='0.025'/%3E%3C/svg%3E");
   }
 
-  /* ── Header ── */
   header {
     border-bottom: 2px solid var(--gold);
     padding: 1.5rem 2rem 1rem;
@@ -90,7 +89,6 @@
   }
   .btn.primary:hover { background: #2d2010; }
 
-  /* ── Layout ── */
   main {
     display: grid;
     grid-template-columns: 320px 1fr;
@@ -101,7 +99,6 @@
     padding: 0;
   }
 
-  /* ── Today Panel ── */
   .today-panel {
     border-right: 1px solid var(--border);
     padding: 2rem 1.5rem;
@@ -139,7 +136,6 @@
   }
   .date-select input[type="number"]:first-child { width: 70px; }
 
-  /* Moon display */
   .moon-display {
     text-align: center;
     padding: 1rem;
@@ -182,7 +178,6 @@
     opacity: 0.75;
   }
 
-  /* Tenpo date */
   .tenpo-date-display {
     text-align: center;
     padding: 1rem;
@@ -218,7 +213,6 @@
     letter-spacing: 0.1em;
   }
 
-  /* Solar info */
   .solar-info {
     font-size: 0.8rem;
     line-height: 2;
@@ -241,7 +235,6 @@
     letter-spacing: 0.1em;
   }
 
-  /* ── Calendar Grid ── */
   .calendar-panel {
     padding: 2rem 1.5rem;
   }
@@ -373,7 +366,6 @@
     right: 3px;
   }
 
-  /* ── Compare Window ── */
   .compare-window {
     position: fixed;
     bottom: 1.5rem;
@@ -432,7 +424,6 @@
     font-size: 0.75rem;
   }
 
-  /* ── Footer ── */
   footer {
     border-top: 1px solid var(--border);
     padding: 0.8rem 2rem;
@@ -444,24 +435,6 @@
     justify-content: space-between;
   }
 
-  /* Loading */
-  .loading {
-    opacity: 0.4;
-    pointer-events: none;
-  }
-  .skeleton {
-    background: linear-gradient(90deg, var(--paper-dark) 25%, var(--paper) 50%, var(--paper-dark) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.2s infinite;
-    border-radius: 2px;
-    display: inline-block;
-  }
-  @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-  }
-
-  /* ── 旧暦モード ── */
   .cal-grid.lunisolar {
     grid-template-columns: repeat(10, 1fr);
   }
@@ -500,7 +473,6 @@
 </header>
 
 <main>
-  <!-- Left: Today Panel -->
   <aside class="today-panel">
     <div>
       <div class="section-label">日付選択</div>
@@ -544,7 +516,6 @@
     </div>
   </aside>
 
-  <!-- Right: Calendar -->
   <section class="calendar-panel">
     <div class="calendar-header">
       <div class="calendar-nav">
@@ -571,7 +542,6 @@
   </section>
 </main>
 
-<!-- Compare Window -->
 <div class="compare-window" id="compareWin">
   <div class="compare-window-header" id="compareHeader">
     <span>西暦 ⟷ 旧暦 比較</span>
@@ -583,92 +553,531 @@
 </div>
 
 <footer>
-  <span>天保暦 (1844〜) · 定気法 · Meeus Astronomical Algorithms</span>
+  <span>天保暦 (1844〜) · 定気法 · Meeus Astronomical Algorithms · 静的版</span>
   <span id="footerJD">JD —</span>
 </footer>
 
 <script>
+// ── solar.js ──────────────────────────────────────────────
+function julianCentury(jd) {
+  return (jd - 2451545.0) / 36525.0;
+}
+function sunMeanLongitude(T) {
+  return (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360;
+}
+function sunMeanAnomaly(T) {
+  return 357.52911 + T * (35999.05029 - T * 0.0001537);
+}
+function earthEccentricity(T) {
+  return 0.016708634 - T * (0.000042037 + T * 0.0000001267);
+}
+function sunEquationOfCenter(T) {
+  const M = sunMeanAnomaly(T) * Math.PI / 180;
+  return (
+    Math.sin(M) * (1.9146 - T * (0.004817 + T * 0.000014)) +
+    Math.sin(2 * M) * (0.019993 - T * 0.000101) +
+    Math.sin(3 * M) * 0.00029
+  );
+}
+function solarLongitude(jd) {
+  const T = julianCentury(jd);
+  const L0 = sunMeanLongitude(T);
+  const C = sunEquationOfCenter(T);
+  const sunTrueLong = L0 + C;
+  const omega = 125.04 - 1934.136 * T;
+  const apparent = sunTrueLong - 0.00569 - 0.00478 * Math.sin(omega * Math.PI / 180);
+  return ((apparent % 360) + 360) % 360;
+}
+function findSolarLongitude(targetLong, jdApprox) {
+  let jd = jdApprox;
+  for (let i = 0; i < 50; i++) {
+    const lon = solarLongitude(jd);
+    let diff = targetLong - lon;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    const step = diff / 360 * 365.25;
+    if (Math.abs(step) < 0.0001) break;
+    jd += step;
+  }
+  return jd;
+}
+
+// ── lunar.js ──────────────────────────────────────────────
+function approximateNewMoon(k) {
+  const T = k / 1236.85;
+  return (
+    2451550.09766 +
+    29.530588861 * k +
+    T * T * 0.00015437 -
+    T * T * T * 0.000000150 +
+    T * T * T * T * 0.00000000073
+  );
+}
+function preciseLunarPhase(k) {
+  const T = k / 1236.85;
+  let JDE = approximateNewMoon(k);
+  const M = (2.5534 + 29.10535670 * k - T * T * 0.0000014 - T * T * T * 0.00000011) * Math.PI / 180;
+  const Mprime = (201.5643 + 385.81693528 * k + T * T * 0.0107582 + T * T * T * 0.00001238 - T * T * T * T * 0.000000058) * Math.PI / 180;
+  const F = (160.7108 + 390.67050284 * k - T * T * 0.0016118 - T * T * T * 0.00000227 + T * T * T * T * 0.000000011) * Math.PI / 180;
+  const omega = (124.7746 - 1.56375588 * k + T * T * 0.0020672 + T * T * T * 0.00000215) * Math.PI / 180;
+  const E = 1 - T * 0.002516 - T * T * 0.0000074;
+  const isNewMoon = Math.round(k) === k;
+  if (isNewMoon) {
+    JDE +=
+      -0.40720 * Math.sin(Mprime) +
+       0.17241 * E * Math.sin(M) +
+       0.01608 * Math.sin(2 * Mprime) +
+       0.01039 * Math.sin(2 * F) +
+       0.00739 * E * Math.sin(Mprime - M) -
+       0.00514 * E * Math.sin(Mprime + M) +
+       0.00208 * E * E * Math.sin(2 * M) -
+       0.00111 * Math.sin(Mprime - 2 * F) -
+       0.00057 * Math.sin(Mprime + 2 * F) +
+       0.00056 * E * Math.sin(2 * Mprime + M) -
+       0.00042 * Math.sin(3 * Mprime) +
+       0.00042 * E * Math.sin(M + 2 * F) +
+       0.00038 * E * Math.sin(M - 2 * F) -
+       0.00024 * E * Math.sin(2 * Mprime - M) -
+       0.00017 * Math.sin(omega) -
+       0.00007 * Math.sin(Mprime + 2 * M);
+  } else {
+    JDE +=
+      -0.40614 * Math.sin(Mprime) +
+       0.17302 * E * Math.sin(M) +
+       0.01614 * Math.sin(2 * Mprime) +
+       0.01043 * Math.sin(2 * F) +
+       0.00734 * E * Math.sin(Mprime - M) -
+       0.00515 * E * Math.sin(Mprime + M) +
+       0.00209 * E * E * Math.sin(2 * M) -
+       0.00111 * Math.sin(Mprime - 2 * F) -
+       0.00057 * Math.sin(Mprime + 2 * F) +
+       0.00056 * E * Math.sin(2 * Mprime + M) -
+       0.00042 * Math.sin(3 * Mprime) +
+       0.00042 * E * Math.sin(M + 2 * F) +
+       0.00038 * E * Math.sin(M - 2 * F) -
+       0.00024 * E * Math.sin(2 * Mprime - M) -
+       0.00017 * Math.sin(omega) -
+       0.00007 * Math.sin(Mprime + 2 * M);
+  }
+  JDE +=
+    0.000325 * Math.sin((299.77 + 0.107408 * k - 0.009173 * T * T) * Math.PI / 180) +
+    0.000165 * Math.sin((251.88 + 0.016321 * k) * Math.PI / 180) +
+    0.000164 * Math.sin((251.83 + 26.651886 * k) * Math.PI / 180) +
+    0.000126 * Math.sin((349.42 + 36.412478 * k) * Math.PI / 180) +
+    0.000110 * Math.sin((84.66 + 18.206239 * k) * Math.PI / 180) +
+    0.000062 * Math.sin((141.74 + 53.303771 * k) * Math.PI / 180) +
+    0.000060 * Math.sin((207.14 + 2.453732 * k) * Math.PI / 180) +
+    0.000056 * Math.sin((154.84 + 7.306860 * k) * Math.PI / 180) +
+    0.000047 * Math.sin((34.52 + 27.261239 * k) * Math.PI / 180) +
+    0.000042 * Math.sin((207.19 + 0.121824 * k) * Math.PI / 180) +
+    0.000040 * Math.sin((291.34 + 1.844379 * k) * Math.PI / 180) +
+    0.000037 * Math.sin((161.72 + 24.198154 * k) * Math.PI / 180) +
+    0.000035 * Math.sin((239.56 + 25.513099 * k) * Math.PI / 180) +
+    0.000023 * Math.sin((331.55 + 3.592518 * k) * Math.PI / 180);
+  return JDE;
+}
+function previousNewMoon(jd) {
+  const k = Math.floor((jd - 2451550.09766) / 29.530588861);
+  let jdNM = preciseLunarPhase(k);
+  if (jdNM > jd) jdNM = preciseLunarPhase(k - 1);
+  return jdNM;
+}
+function moonAge(jd) {
+  return jd - previousNewMoon(jd);
+}
+function newMoonsFrom(jdStart, n) {
+  const k0 = Math.floor((jdStart - 2451550.09766) / 29.530588861);
+  const result = [];
+  let k = k0 - 1;
+  while (result.length < n) {
+    const jd = preciseLunarPhase(k);
+    if (jd >= jdStart) result.push(jd);
+    k++;
+  }
+  return result;
+}
+
+// ── datetime.js ───────────────────────────────────────────
+function gregorianToJD(year, month, day) {
+  if (month <= 2) { year -= 1; month += 12; }
+  const A = Math.floor(year / 100);
+  const B = 2 - A + Math.floor(A / 4);
+  return Math.floor(365.25 * (year + 4716)) + Math.floor(30.6001 * (month + 1)) + day + B - 1524.5;
+}
+function jdToGregorian(jd) {
+  const jd2 = jd + 0.5;
+  const Z = Math.floor(jd2);
+  const F = jd2 - Z;
+  let A = Z;
+  if (Z >= 2299161) {
+    const alpha = Math.floor((Z - 1867216.25) / 36524.25);
+    A = Z + 1 + alpha - Math.floor(alpha / 4);
+  }
+  const B = A + 1524;
+  const C = Math.floor((B - 122.1) / 365.25);
+  const D = Math.floor(365.25 * C);
+  const E = Math.floor((B - D) / 30.6001);
+  const dayFrac = B - D - Math.floor(30.6001 * E) + F;
+  const day = Math.floor(dayFrac);
+  const timeFrac = dayFrac - day;
+  const totalSec = Math.round(timeFrac * 86400);
+  const hour = Math.floor(totalSec / 3600);
+  const minute = Math.floor((totalSec % 3600) / 60);
+  const second = totalSec % 60;
+  const month = E < 14 ? E - 1 : E - 13;
+  const year2 = month > 2 ? C - 4716 : C - 4715;
+  return { year: year2, month, day, hour, minute, second };
+}
+function jdToLocalGregorian(jd, tzOffset = 9) {
+  return jdToGregorian(jd + tzOffset / 24);
+}
+function localGregorianToJD(year, month, day, hour = 0, minute = 0, tzOffset = 9) {
+  const dayFrac = day + (hour - tzOffset) / 24 + minute / 1440;
+  return gregorianToJD(year, month, dayFrac);
+}
+function jstMidnightJD(year, month, day) {
+  return localGregorianToJD(year, month, day, 0, 0, 9);
+}
+
+// ── tenpo.js ──────────────────────────────────────────────
+const CHUKI_LONGITUDE = [
+  { long: 330, month: 1 },
+  { long: 0,   month: 2 },
+  { long: 30,  month: 3 },
+  { long: 60,  month: 4 },
+  { long: 90,  month: 5 },
+  { long: 120, month: 6 },
+  { long: 150, month: 7 },
+  { long: 180, month: 8 },
+  { long: 210, month: 9 },
+  { long: 240, month: 10 },
+  { long: 270, month: 11 },
+  { long: 300, month: 12 },
+];
+
+function getChukiInMonth(nmStart, nmEnd) {
+  const result = [];
+  const lonStart = solarLongitude(nmStart);
+  for (const chuki of CHUKI_LONGITUDE) {
+    let diff = chuki.long - lonStart;
+    if (diff < 0) diff += 360;
+    if (diff > 180) continue;
+    const approxJD = nmStart + diff;
+    const jdChuki = findSolarLongitude(chuki.long, approxJD);
+    if (jdChuki >= nmStart && jdChuki < nmEnd) {
+      result.push({ ...chuki, jd: jdChuki });
+    }
+  }
+  return result;
+}
+
+function buildTenpoMonths(yearGreg, monthCount = 15) {
+  const startJD = localGregorianToJD(yearGreg - 1, 11, 1, 0, 0, 9);
+  const newMoons = newMoonsFrom(startJD, monthCount + 2);
+  const months = [];
+  for (let i = 0; i < newMoons.length - 1; i++) {
+    const nmStart = newMoons[i];
+    const nmEnd = newMoons[i + 1];
+    const chukiList = getChukiInMonth(nmStart, nmEnd);
+    const hasChuki = chukiList.length > 0;
+    const chuki = chukiList[0] || null;
+    const startDate = jdToLocalGregorian(nmStart, 9);
+    const endDate = jdToLocalGregorian(nmEnd - 1, 9);
+    months.push({
+      newMoonJD: nmStart,
+      nextNewMoonJD: nmEnd,
+      startGreg: { year: startDate.year, month: startDate.month, day: startDate.day },
+      endGreg: { year: endDate.year, month: endDate.month, day: endDate.day },
+      hasChuki,
+      chuki,
+      tenpoMonth: chuki ? chuki.month : null,
+      isLeap: !hasChuki,
+      length: Math.round(nmEnd - nmStart),
+    });
+  }
+  let lastMonth = null;
+  for (const m of months) {
+    if (m.isLeap) {
+      m.tenpoMonth = lastMonth;
+    } else {
+      lastMonth = m.tenpoMonth;
+    }
+  }
+  return months;
+}
+
+function gregorianToTenpo(year, month, day) {
+  const jdTarget = jstMidnightJD(year, month, day);
+  let months = buildTenpoMonths(year);
+  let targetMonth = null;
+  for (const m of months) {
+    const mStart = jstMidnightJD(m.startGreg.year, m.startGreg.month, m.startGreg.day);
+    const mEnd = jstMidnightJD(m.endGreg.year, m.endGreg.month, m.endGreg.day) + 1;
+    if (jdTarget >= mStart && jdTarget < mEnd) { targetMonth = m; break; }
+  }
+  if (!targetMonth) {
+    months = buildTenpoMonths(year + 1);
+    for (const m of months) {
+      const mStart = jstMidnightJD(m.startGreg.year, m.startGreg.month, m.startGreg.day);
+      const mEnd = jstMidnightJD(m.endGreg.year, m.endGreg.month, m.endGreg.day) + 1;
+      if (jdTarget >= mStart && jdTarget < mEnd) { targetMonth = m; break; }
+    }
+  }
+  if (!targetMonth) return null;
+  const mStart = jstMidnightJD(targetMonth.startGreg.year, targetMonth.startGreg.month, targetMonth.startGreg.day);
+  const tenpoDay = Math.round(jdTarget - mStart) + 1;
+  let tenpoYear = year;
+  if (targetMonth.tenpoMonth === 1 && !targetMonth.isLeap) {
+    tenpoYear = targetMonth.startGreg.year;
+  }
+  return {
+    tenpoYear,
+    tenpoMonth: targetMonth.tenpoMonth,
+    tenpoDay,
+    isLeap: targetMonth.isLeap,
+    monthLength: targetMonth.length,
+    chuki: targetMonth.chuki ? targetMonth.chuki.long : null,
+    kanshi: getKanshi(tenpoYear),
+    startGreg: targetMonth.startGreg,
+  };
+}
+
+const KAN = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
+const SHI = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+function getKanshi(year) {
+  const k = ((year - 4) % 10 + 10) % 10;
+  const s = ((year - 4) % 12 + 12) % 12;
+  return KAN[k] + SHI[s];
+}
+
+const TENPO_MONTH_NAMES = ['睦月','如月','弥生','卯月','皐月','水無月','文月','葉月','長月','神無月','霜月','師走'];
+function tenpoMonthName(n) {
+  if (n >= 1 && n <= 12) return TENPO_MONTH_NAMES[n - 1];
+  return `${n}月`;
+}
+
+const TENPO_DAY_NAMES = [
+  '朔','二日','三日','四日','五日','六日','七日','八日','九日','十日',
+  '十一日','十二日','十三日','十四日','十五日','十六日','十七日','十八日','十九日','二十日',
+  '廿一日','廿二日','廿三日','廿四日','廿五日','廿六日','廿七日','廿八日','廿九日','晦'
+];
+function tenpoDayName(n) {
+  return TENPO_DAY_NAMES[Math.min(n - 1, 29)] || `${n}日`;
+}
+
+// ── 天文ユーティリティ ────────────────────────────────────
+const SEKKI_LIST = [
+  { long: 315, name: '小寒' }, { long: 330, name: '大寒' }, { long: 345, name: '立春' },
+  { long: 0,   name: '雨水' }, { long: 15,  name: '啓蟄' }, { long: 30,  name: '春分' },
+  { long: 45,  name: '清明' }, { long: 60,  name: '穀雨' }, { long: 75,  name: '立夏' },
+  { long: 90,  name: '小満' }, { long: 105, name: '芒種' }, { long: 120, name: '夏至' },
+  { long: 135, name: '小暑' }, { long: 150, name: '大暑' }, { long: 165, name: '立秋' },
+  { long: 180, name: '処暑' }, { long: 195, name: '白露' }, { long: 210, name: '秋分' },
+  { long: 225, name: '寒露' }, { long: 240, name: '霜降' }, { long: 255, name: '立冬' },
+  { long: 270, name: '小雪' }, { long: 285, name: '大雪' }, { long: 300, name: '冬至' },
+];
+function getSekki(lon) {
+  for (const s of SEKKI_LIST) {
+    if (Math.abs(lon - s.long) < 0.5 || (s.long === 0 && (lon < 0.5 || lon > 359.5))) return s.name;
+  }
+  return null;
+}
+function getSurroundingSekki(lon) {
+  const map = {};
+  for (const s of SEKKI_LIST) map[s.long] = s.name;
+  const prevLon = Math.floor(lon / 15) * 15;
+  const nextLon = (prevLon + 15) % 360;
+  return { prev: map[prevLon] || null, next: map[nextLon] || null };
+}
+function getMoonEmoji(age) {
+  const phase = age / 29.53;
+  if (phase < 0.033 || phase > 0.967) return '🌑';
+  if (phase < 0.133) return '🌒';
+  if (phase < 0.233) return '🌓';
+  if (phase < 0.367) return '🌔';
+  if (phase < 0.533) return '🌕';
+  if (phase < 0.633) return '🌖';
+  if (phase < 0.733) return '🌗';
+  if (phase < 0.867) return '🌘';
+  return '🌑';
+}
+function getMoonPhaseName(age) {
+  const phase = age / 29.53;
+  if (phase < 0.033 || phase > 0.967) return '新月(朔)';
+  if (phase < 0.133) return '三日月';
+  if (phase < 0.233) return '上弦の月';
+  if (phase < 0.367) return '十日夜';
+  if (phase < 0.533) return '満月(望)';
+  if (phase < 0.633) return '十六夜';
+  if (phase < 0.733) return '下弦の月';
+  if (phase < 0.867) return '二十六夜';
+  return '晦日の月';
+}
+const CHUKI_NAMES = {
+  330: '雨水', 0: '春分', 30: '穀雨', 60: '小満',
+  90: '夏至', 120: '大暑', 150: '処暑', 180: '秋分',
+  210: '霜降', 240: '小雪', 270: '冬至', 300: '大寒',
+};
+function getChukiName(lon) {
+  return CHUKI_NAMES[lon] || `${lon}°`;
+}
+
+// ── 計算API (fetchの代わりに直接呼び出す) ────────────────
+function computeDate(year, month, day) {
+  const tenpo = gregorianToTenpo(year, month, day);
+  if (!tenpo) return null;
+  const jd = jstMidnightJD(year, month, day) + 9 / 24 + 0.5;
+  const age = moonAge(jd);
+  const sunLon = solarLongitude(jd);
+  return {
+    gregorian: { year, month, day },
+    tenpo: {
+      year: tenpo.tenpoYear,
+      month: tenpo.tenpoMonth,
+      monthName: tenpoMonthName(tenpo.tenpoMonth),
+      day: tenpo.tenpoDay,
+      dayName: tenpoDayName(tenpo.tenpoDay),
+      isLeap: tenpo.isLeap,
+      monthLength: tenpo.monthLength,
+      kanshi: tenpo.kanshi,
+    },
+    astronomy: {
+      moonAge: Math.round(age * 10) / 10,
+      moonPhase: getMoonPhaseName(age),
+      moonEmoji: getMoonEmoji(age),
+      solarLongitude: Math.round(sunLon * 100) / 100,
+      sekki: getSekki(sunLon),
+      ...getSurroundingSekki(sunLon),
+    },
+  };
+}
+
+function computeMonth(year, month) {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const days = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const tenpo = gregorianToTenpo(year, month, d);
+    const jd = jstMidnightJD(year, month, d) + 9 / 24 + 0.5;
+    const age = moonAge(jd);
+    const sunLon = solarLongitude(jd);
+    days.push({
+      day: d,
+      tenpo: tenpo ? {
+        month: tenpo.tenpoMonth,
+        monthName: tenpoMonthName(tenpo.tenpoMonth),
+        day: tenpo.tenpoDay,
+        dayName: tenpoDayName(tenpo.tenpoDay),
+        isLeap: tenpo.isLeap,
+        isNewMonth: tenpo.tenpoDay === 1,
+      } : null,
+      moonAge: Math.round(age * 10) / 10,
+      moonEmoji: getMoonEmoji(age),
+      sekki: getSekki(sunLon),
+    });
+  }
+  return { year, month, days };
+}
+
+function computeLunarMonth(gregYear, tenpoMonth, isLeap) {
+  let targetM = null;
+  for (const yr of [gregYear, gregYear - 1, gregYear + 1]) {
+    const list = buildTenpoMonths(yr, 18);
+    targetM = list.find(m => m.tenpoMonth === tenpoMonth && m.isLeap === isLeap);
+    if (targetM) break;
+  }
+  if (!targetM) return null;
+  const days = [];
+  for (let i = 0; i < targetM.length; i++) {
+    const g = jdToLocalGregorian(targetM.newMoonJD + i, 9);
+    const jdNoon = targetM.newMoonJD + i + 9 / 24 + 0.5;
+    const age = moonAge(jdNoon);
+    const sunLon = solarLongitude(jdNoon);
+    days.push({
+      tenpoDay: i + 1,
+      dayName: tenpoDayName(i + 1),
+      greg: { year: g.year, month: g.month, day: g.day },
+      moonAge: Math.round(age * 10) / 10,
+      moonEmoji: getMoonEmoji(age),
+      sekki: getSekki(sunLon),
+    });
+  }
+  return {
+    tenpoMonth,
+    tenpoMonthName: tenpoMonthName(tenpoMonth),
+    isLeap,
+    length: targetM.length,
+    startGreg: targetM.startGreg,
+    endGreg: targetM.endGreg,
+    days,
+  };
+}
+
+function computeNewMoons(year) {
+  const months = buildTenpoMonths(year, 16);
+  return {
+    year,
+    months: months.map(m => ({
+      newMoonJD: Math.round(m.newMoonJD * 10000) / 10000,
+      startGreg: m.startGreg,
+      endGreg: m.endGreg,
+      tenpoMonth: m.tenpoMonth,
+      tenpoMonthName: tenpoMonthName(m.tenpoMonth),
+      isLeap: m.isLeap,
+      length: m.length,
+      chuki: m.chuki ? { longitude: m.chuki.long, name: getChukiName(m.chuki.long) } : null,
+    })),
+  };
+}
+
+// ── UI ────────────────────────────────────────────────────
 const today = new Date();
 let curYear = today.getFullYear();
 let curMonth = today.getMonth() + 1;
 let selDate = { year: curYear, month: curMonth, day: today.getDate() };
 let compareVisible = false;
-let monthData = null;
-
-// 旧暦モード用状態
-let viewMode = 'gregorian'; // 'gregorian' | 'lunisolar'
+let viewMode = 'gregorian';
 let curTenpoYear = null;
 let curTenpoMonth = null;
 let curTenpoIsLeap = false;
 
-// Init
 document.getElementById('selYear').value = selDate.year;
 document.getElementById('selMonth').value = selDate.month;
 document.getElementById('selDay').value = selDate.day;
 
-async function fetchLunarMonth(gregYear, tenpoMonth, isLeap) {
-  const r = await fetch(`/api/lunarmonth?year=${gregYear}&month=${tenpoMonth}&isLeap=${isLeap}`);
-  if (!r.ok) throw new Error('API error');
-  return r.json();
-}
-
-async function fetchDate(y, m, d) {
-  const r = await fetch(`/api/date?year=${y}&month=${m}&day=${d}`);
-  if (!r.ok) throw new Error('API error');
-  return r.json();
-}
-
-async function fetchMonth(y, m) {
-  const r = await fetch(`/api/month?year=${y}&month=${m}`);
-  if (!r.ok) throw new Error('API error');
-  return r.json();
-}
-
-async function loadDate() {
+function loadDate() {
   const y = parseInt(document.getElementById('selYear').value);
   const m = parseInt(document.getElementById('selMonth').value);
   const d = parseInt(document.getElementById('selDay').value);
   if (!y || !m || !d) return;
   selDate = { year: y, month: m, day: d };
   curYear = y; curMonth = m;
-
-  const data = await fetchDate(y, m, d);
-  renderTodayPanel(data);
-  await loadCalendar();
+  const data = computeDate(y, m, d);
+  if (data) renderTodayPanel(data);
+  loadCalendar();
 }
 
 function renderTodayPanel(data) {
   const { tenpo, astronomy } = data;
-
   document.getElementById('moonEmoji').textContent = astronomy.moonEmoji;
   document.getElementById('moonAge').textContent = astronomy.moonAge;
   document.getElementById('moonPhaseName').textContent = astronomy.moonPhase;
-
   document.getElementById('tenpoYear').textContent = tenpo.year;
   document.getElementById('tenpoKanshi').textContent = tenpo.kanshi;
   const leapMark = tenpo.isLeap ? '<span class="tenpo-leap">閏</span>' : '';
-  document.getElementById('tenpoDate').innerHTML =
-    `${leapMark}${tenpo.monthName}　${tenpo.dayName}`;
-  document.getElementById('tenpoDayName').textContent =
-    `${tenpo.month}月 ${tenpo.day}日 (旧)`;
-
+  document.getElementById('tenpoDate').innerHTML = `${leapMark}${tenpo.monthName}　${tenpo.dayName}`;
+  document.getElementById('tenpoDayName').textContent = `${tenpo.month}月 ${tenpo.day}日 (旧)`;
   document.getElementById('sunLon').textContent = astronomy.solarLongitude + '°';
   document.getElementById('sekkiLabel').innerHTML = astronomy.sekki
     ? `<span class="sekki-badge">${astronomy.sekki}</span>`
     : `<span style="opacity:0.65">${astronomy.prev} → ${astronomy.next}</span>`;
   document.getElementById('monthLen').textContent = tenpo.monthLength + '日';
-
-  // JD footer
-  const jd = dateToJD(selDate.year, selDate.month, selDate.day);
+  const jd = gregorianToJD(selDate.year, selDate.month, selDate.day);
   document.getElementById('footerJD').textContent = `JD ${jd.toFixed(1)}`;
-
   if (compareVisible) renderCompare(data);
 }
 
 function renderCompare(data) {
-  const { gregorian, tenpo, astronomy } = data;
-  const g = gregorian;
-  const MONTHS = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+  const { gregorian: g, tenpo, astronomy } = data;
   document.getElementById('compareBody').innerHTML = `
     <div class="compare-row">
       <span class="compare-label">西暦</span>
@@ -705,16 +1114,14 @@ function renderCompare(data) {
   `;
 }
 
-async function loadCalendar() {
-  if (viewMode === 'lunisolar') { await loadLunarCalendar(); return; }
-  await loadGregorianCalendar();
+function loadCalendar() {
+  if (viewMode === 'lunisolar') { loadLunarCalendar(); return; }
+  loadGregorianCalendar();
 }
 
-async function loadGregorianCalendar() {
+function loadGregorianCalendar() {
   const grid = document.getElementById('calGrid');
   grid.classList.remove('lunisolar');
-
-  // ヘッダー（7列: 日〜土）を再構築
   while (grid.firstChild) grid.removeChild(grid.firstChild);
   ['日','月','火','水','木','金','土'].forEach((label, i) => {
     const d = document.createElement('div');
@@ -723,11 +1130,8 @@ async function loadGregorianCalendar() {
     grid.appendChild(d);
   });
 
-  const data = await fetchMonth(curYear, curMonth);
-  monthData = data;
-
+  const data = computeMonth(curYear, curMonth);
   document.getElementById('calTitle').textContent = `${curYear}年 ${curMonth}月`;
-
   const tenpoMonths = [...new Set(data.days
     .filter(d => d.tenpo)
     .map(d => `${d.tenpo.isLeap ? '閏' : ''}${d.tenpo.monthName}`)
@@ -742,47 +1146,37 @@ async function loadGregorianCalendar() {
   }
 
   const todayStr = `${today.getFullYear()}-${today.getMonth()+1}-${today.getDate()}`;
-
   data.days.forEach(d => {
     const cell = document.createElement('div');
     const dow = new Date(curYear, curMonth - 1, d.day).getDay();
     const isToday = `${curYear}-${curMonth}-${d.day}` === todayStr;
     const isSel = selDate.year === curYear && selDate.month === curMonth && selDate.day === d.day;
-
-    cell.className = `cal-cell${dow === 0 ? ' sun' : dow === 6 ? ' sat' : ''}${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`;
+    cell.className = `cal-cell${dow===0?' sun':dow===6?' sat':''}${isToday?' today':''}${isSel?' selected':''}`;
     cell.onclick = () => selectDay(d.day);
-
     let inner = `<div class="greg-day">${d.day}</div>`;
     if (d.tenpo) {
-      if (d.tenpo.isNewMonth) {
-        inner += `<div class="tenpo-new-month">${d.tenpo.isLeap ? '閏' : ''}${d.tenpo.monthName}</div>`;
-      }
+      if (d.tenpo.isNewMonth) inner += `<div class="tenpo-new-month">${d.tenpo.isLeap ? '閏' : ''}${d.tenpo.monthName}</div>`;
       inner += `<div class="tenpo-cell-date">${d.tenpo.dayName}</div>`;
     }
-    if (d.sekki) {
-      inner += `<div class="cell-sekki">${d.sekki}</div>`;
-    }
+    if (d.sekki) inner += `<div class="cell-sekki">${d.sekki}</div>`;
     inner += `<div class="cell-moon">${d.moonEmoji}<span class="cell-moon-age">${d.moonAge}</span></div>`;
-
     cell.innerHTML = inner;
     grid.appendChild(cell);
   });
 }
 
-async function loadLunarCalendar() {
-  const data = await fetchLunarMonth(curTenpoYear, curTenpoMonth, curTenpoIsLeap);
+function loadLunarCalendar() {
+  const data = computeLunarMonth(curTenpoYear, curTenpoMonth, curTenpoIsLeap);
   if (!data) return;
 
   const leapLabel = data.isLeap ? '閏' : '';
-  document.getElementById('calTitle').textContent =
-    `${leapLabel}${data.tenpoMonthName}（旧暦 ${data.tenpoMonth}月）`;
+  document.getElementById('calTitle').textContent = `${leapLabel}${data.tenpoMonthName}（旧暦 ${data.tenpoMonth}月）`;
   const s = data.startGreg, e = data.endGreg;
   document.getElementById('calSub').textContent =
     `グレゴリオ暦 ${s.year}/${String(s.month).padStart(2,'0')}/${String(s.day).padStart(2,'0')} 〜 ${e.year}/${String(e.month).padStart(2,'0')}/${String(e.day).padStart(2,'0')}`;
 
   const grid = document.getElementById('calGrid');
   grid.classList.add('lunisolar');
-
   while (grid.firstChild) grid.removeChild(grid.firstChild);
   ['一','二','三','四','五','六','七','八','九','十'].forEach(h => {
     const d = document.createElement('div');
@@ -792,21 +1186,17 @@ async function loadLunarCalendar() {
   });
 
   const todayStr = `${today.getFullYear()}-${today.getMonth()+1}-${today.getDate()}`;
-
   data.days.forEach(d => {
     const cell = document.createElement('div');
     const g = d.greg;
     const isToday = `${g.year}-${g.month}-${g.day}` === todayStr;
     const isSel = selDate.year === g.year && selDate.month === g.month && selDate.day === g.day;
-
-    cell.className = `cal-cell${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`;
+    cell.className = `cal-cell${isToday?' today':''}${isSel?' selected':''}`;
     cell.onclick = () => selectLunarDay(d);
-
     let inner = `<div class="tenpo-day-primary">${d.dayName}</div>`;
     inner += `<div class="greg-sub">${g.month}/${g.day}</div>`;
     if (d.sekki) inner += `<div class="cell-sekki">${d.sekki}</div>`;
     inner += `<div class="cell-moon">${d.moonEmoji}<span class="cell-moon-age">${d.moonAge}</span></div>`;
-
     cell.innerHTML = inner;
     grid.appendChild(cell);
   });
@@ -818,20 +1208,28 @@ async function loadLunarCalendar() {
   }
 }
 
-async function selectLunarDay(d) {
+function selectDay(day) {
+  selDate = { year: curYear, month: curMonth, day };
+  document.getElementById('selYear').value = selDate.year;
+  document.getElementById('selMonth').value = selDate.month;
+  document.getElementById('selDay').value = selDate.day;
+  const data = computeDate(curYear, curMonth, day);
+  if (data) renderTodayPanel(data);
+  loadCalendar();
+}
+
+function selectLunarDay(d) {
   selDate = { year: d.greg.year, month: d.greg.month, day: d.greg.day };
   document.getElementById('selYear').value = selDate.year;
   document.getElementById('selMonth').value = selDate.month;
   document.getElementById('selDay').value = selDate.day;
-
-  const data = await fetchDate(selDate.year, selDate.month, selDate.day);
-  renderTodayPanel(data);
-  await loadLunarCalendar();
+  const data = computeDate(selDate.year, selDate.month, selDate.day);
+  if (data) renderTodayPanel(data);
+  loadLunarCalendar();
 }
 
-async function prevLunarMonth() {
-  const r = await fetch(`/api/newmoons?year=${curTenpoYear}`);
-  const data = await r.json();
+function prevLunarMonth() {
+  const data = computeNewMoons(curTenpoYear);
   const list = data.months;
   const idx = list.findIndex(m => m.tenpoMonth === curTenpoMonth && m.isLeap === curTenpoIsLeap);
   if (idx <= 0) return;
@@ -839,12 +1237,11 @@ async function prevLunarMonth() {
   curTenpoYear = prev.startGreg.year;
   curTenpoMonth = prev.tenpoMonth;
   curTenpoIsLeap = prev.isLeap;
-  await loadCalendar();
+  loadCalendar();
 }
 
-async function nextLunarMonth() {
-  const r = await fetch(`/api/newmoons?year=${curTenpoYear}`);
-  const data = await r.json();
+function nextLunarMonth() {
+  const data = computeNewMoons(curTenpoYear);
   const list = data.months;
   const idx = list.findIndex(m => m.tenpoMonth === curTenpoMonth && m.isLeap === curTenpoIsLeap);
   if (idx < 0 || idx >= list.length - 1) return;
@@ -852,14 +1249,15 @@ async function nextLunarMonth() {
   curTenpoYear = next.startGreg.year;
   curTenpoMonth = next.tenpoMonth;
   curTenpoIsLeap = next.isLeap;
-  await loadCalendar();
+  loadCalendar();
 }
 
-async function toggleViewMode() {
+function toggleViewMode() {
   const btn = document.getElementById('modeToggleBtn');
   const grid = document.getElementById('calGrid');
   if (viewMode === 'gregorian') {
-    const data = await fetchDate(selDate.year, selDate.month, selDate.day);
+    const data = computeDate(selDate.year, selDate.month, selDate.day);
+    if (!data) return;
     curTenpoYear = data.tenpo.year;
     curTenpoMonth = data.tenpo.month;
     curTenpoIsLeap = data.tenpo.isLeap;
@@ -870,19 +1268,6 @@ async function toggleViewMode() {
     grid.classList.remove('lunisolar');
     btn.textContent = '旧暦表示';
   }
-  await loadCalendar();
-}
-
-async function selectDay(day) {
-  selDate = { year: curYear, month: curMonth, day };
-  document.getElementById('selYear').value = selDate.year;
-  document.getElementById('selMonth').value = selDate.month;
-  document.getElementById('selDay').value = selDate.day;
-
-  const data = await fetchDate(curYear, curMonth, day);
-  renderTodayPanel(data);
-
-  // Re-render calendar to update selection
   loadCalendar();
 }
 
@@ -898,7 +1283,8 @@ function nextMonth() {
   if (curMonth > 12) { curMonth = 1; curYear++; }
   loadCalendar();
 }
-async function goToday() {
+
+function goToday() {
   curYear = today.getFullYear();
   curMonth = today.getMonth() + 1;
   selDate = { year: curYear, month: curMonth, day: today.getDate() };
@@ -906,12 +1292,14 @@ async function goToday() {
   document.getElementById('selMonth').value = selDate.month;
   document.getElementById('selDay').value = selDate.day;
   if (viewMode === 'lunisolar') {
-    const data = await fetchDate(selDate.year, selDate.month, selDate.day);
-    curTenpoYear = data.tenpo.year;
-    curTenpoMonth = data.tenpo.month;
-    curTenpoIsLeap = data.tenpo.isLeap;
-    renderTodayPanel(data);
-    await loadCalendar();
+    const data = computeDate(selDate.year, selDate.month, selDate.day);
+    if (data) {
+      curTenpoYear = data.tenpo.year;
+      curTenpoMonth = data.tenpo.month;
+      curTenpoIsLeap = data.tenpo.isLeap;
+      renderTodayPanel(data);
+    }
+    loadCalendar();
   } else {
     loadDate();
   }
@@ -921,50 +1309,37 @@ function toggleCompare() {
   compareVisible = !compareVisible;
   document.getElementById('compareWin').classList.toggle('visible', compareVisible);
   if (compareVisible) {
-    fetchDate(selDate.year, selDate.month, selDate.day).then(renderCompare);
+    const data = computeDate(selDate.year, selDate.month, selDate.day);
+    if (data) renderCompare(data);
     makeDraggable(document.getElementById('compareWin'), document.getElementById('compareHeader'));
   }
 }
 
 function showNewMoons() {
-  fetch(`/api/newmoons?year=${curYear}`)
-    .then(r => r.json())
-    .then(data => {
-      const rows = data.months.map(m =>
-        `${m.startGreg.year}/${String(m.startGreg.month).padStart(2,'0')}/${String(m.startGreg.day).padStart(2,'0')} ` +
-        `→ ${m.isLeap ? '閏' : ''}${m.tenpoMonthName} (${m.length}日) ` +
-        (m.chuki ? `[${m.chuki.name}]` : '[中気なし=閏]')
-      ).join('\n');
-      alert(`${curYear}年 朔日一覧\n\n${rows}`);
-    });
+  const data = computeNewMoons(curYear);
+  const rows = data.months.map(m =>
+    `${m.startGreg.year}/${String(m.startGreg.month).padStart(2,'0')}/${String(m.startGreg.day).padStart(2,'0')} ` +
+    `→ ${m.isLeap ? '閏' : ''}${m.tenpoMonthName} (${m.length}日) ` +
+    (m.chuki ? `[${m.chuki.name}]` : '[中気なし=閏]')
+  ).join('\n');
+  alert(`${curYear}年 朔日一覧\n\n${rows}`);
 }
 
 function makeDraggable(el, handle) {
-  let ox = 0, oy = 0, x = 0, y = 0;
+  let ox = 0, oy = 0;
   handle.onmousedown = e => {
     e.preventDefault();
     ox = e.clientX - el.offsetLeft;
     oy = e.clientY - el.offsetTop;
     document.onmousemove = e => {
-      x = e.clientX - ox; y = e.clientY - oy;
-      el.style.left = x + 'px'; el.style.top = y + 'px';
+      el.style.left = (e.clientX - ox) + 'px';
+      el.style.top = (e.clientY - oy) + 'px';
       el.style.right = 'auto'; el.style.bottom = 'auto';
     };
-    document.onmouseup = () => {
-      document.onmousemove = null;
-      document.onmouseup = null;
-    };
+    document.onmouseup = () => { document.onmousemove = null; document.onmouseup = null; };
   };
 }
 
-function dateToJD(y, m, d) {
-  if (m <= 2) { y--; m += 12; }
-  const A = Math.floor(y / 100);
-  const B = 2 - A + Math.floor(A / 4);
-  return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + d + B - 1524.5;
-}
-
-// Initial load
 loadDate();
 </script>
 </body>
